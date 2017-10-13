@@ -1,0 +1,10 @@
+{
+  "name": "drupal/block_cache_add",
+  "description": "Provide UI to add cache context and tags to blocks",
+  "type": "drupal-module",
+  "license": "GPL-2.0+",
+  "minimum-stability": "dev",
+  "require": {
+    "drupal/core": "~8.3"
+  }
+}
