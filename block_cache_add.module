@@ -1,0 +1,188 @@
+<?php
+
+/**
+ * @file
+ * Main block_cache_add module file.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Block\BlockPluginInterface;
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Add cache settings to all blocks.
+ */
+function block_cache_add_form_block_form_alter(&$form, FormStateInterface $form_state) {
+  $entity_form = $form_state->getFormObject();
+  $block = $entity_form->getEntity();
+
+  $form['block_cache_add_tabs'] = [
+    '#type' => 'vertical_tabs',
+    '#title' => t('Cache settings'),
+    '#parents' => ['block_cache_add_tabs'],
+  ];
+
+  $current_cache_context = $block->getCacheContexts();
+  if ($current_cache_context) {
+    $form['block_cache_add_tabs']['cache_current_context'] = [
+      '#type' => 'item',
+      '#title' => t('Current cache context'),
+      '#markup' => implode(', ', $current_cache_context),
+      '#weight' => -10,
+    ];
+  }
+
+  $current_cache_tags = $block->getCacheTags();
+  if ($current_cache_tags) {
+    $form['block_cache_add_tabs']['cache_current_tags'] = [
+      '#type' => 'item',
+      '#title' => t('Current cache tags'),
+      '#markup' => implode(', ', $current_cache_tags),
+      '#weight' => -5,
+    ];
+  }
+
+  $form['cache_context'] = [
+    '#type' => 'details',
+    '#title' => t('Cache context'),
+    '#tree' => TRUE,
+    '#group' => 'block_cache_add_tabs',
+  ];
+
+  $options = ['' => t('-None-')];
+  $container = \Drupal::getContainer();
+  $kernel = $container->get('kernel');
+  $services = $kernel->getCachedContainerDefinition()['services'];
+  foreach ($services as $service_id => $value) {
+    if (preg_match('/^cache_context\.(.*)$/i', $service_id, $match)) {
+      $service_definition = unserialize($value);
+      $options[$match[1]] = $service_definition['class']::getLabel();
+    }
+  }
+
+  $block_cache_context_values = $block->getThirdPartySetting('block_cache_add', 'cache_context', [
+    0 => [
+      'cache_context_id' => NULL,
+      'cache_context_value' => NULL,
+    ],
+  ]);
+
+  foreach ($block_cache_context_values as $delta => $value) {
+    $form['cache_context'][$delta] = [
+      '#type' => 'container',
+    ];
+
+    $form['cache_context'][$delta]['cache_context_id'] = [
+      '#title' => t('Cache context name to add'),
+      '#type' => 'select',
+      '#options' => $options,
+      '#default_value' => $value['cache_context_id'],
+    ];
+
+    $form['cache_context'][$delta]['cache_context_value'] = [
+      '#title' => t('Cache context value to add'),
+      '#type' => 'textfield',
+      '#default_value' => $value['cache_context_value'],
+    ];
+  }
+
+  $form['cache_tags'] = [
+    '#type' => 'details',
+    '#title' => t('Cache tags'),
+    '#tree' => TRUE,
+    '#group' => 'block_cache_add_tabs',
+  ];
+
+  $block_cache_tags_values = $block->getThirdPartySetting('block_cache_add', 'cache_tags', [
+    0 => [
+      'cache_tags_value' => NULL,
+    ],
+  ]);
+
+  foreach ($block_cache_tags_values as $delta => $value) {
+    $form['cache_tags'][$delta] = [
+      '#type' => 'container',
+    ];
+
+    $form['cache_tags'][$delta]['cache_tags_value'] = [
+      '#title' => t('Cache tags value to add'),
+      '#description' => t('A comma separated list of tags.'),
+      '#type' => 'textfield',
+      '#default_value' => $value['cache_tags_value'],
+    ];
+  }
+
+  $form['cache_max_age'] = [
+    '#type' => 'details',
+    '#title' => t('Max Age'),
+    '#tree' => TRUE,
+    '#group' => 'block_cache_add_tabs',
+  ];
+
+  $block_cache_max_age = $block->getThirdPartySetting('block_cache_add', 'cache_max_age', ['value' => $block->getCacheMaxAge()]);
+
+  $form['cache_max_age']['value'] = [
+    '#title' => t('Max age to add'),
+    '#description' => t('A positive integer, expressing a number of seconds.'),
+    '#type' => 'number',
+    '#min' => -1,
+    '#default_value' => $block_cache_max_age['value'],
+  ];
+
+  $form['actions']['submit']['#submit'][] = 'block_cache_add_config_form_submit';
+}
+
+/**
+ * Block content config form submit.
+ */
+function block_cache_add_config_form_submit(array $form, FormStateInterface $form_state) {
+  $entity_form = $form_state->getFormObject();
+  if (is_subclass_of($entity_form, 'Drupal\Core\Entity\EntityForm')) {
+    $block = $entity_form->getEntity();
+
+    $cache_context = $form_state->getValue('cache_context');
+    $block->setThirdPartySetting('block_cache_add', 'cache_context', $cache_context);
+
+    $cache_tags = $form_state->getValue('cache_tags');
+    $block->setThirdPartySetting('block_cache_add', 'cache_tags', $cache_tags);
+
+    $cache_max_age = $form_state->getValue('cache_max_age');
+    $block->setThirdPartySetting('block_cache_add', 'cache_max_age', $cache_max_age);
+
+    $block->save();
+  }
+}
+
+/**
+ * Implements hook_block_build_alter().
+ */
+function block_cache_add_block_build_alter(array &$build, BlockPluginInterface $block) {
+  $block_config = \Drupal::entityTypeManager()->getStorage($build['#cache']['keys'][1])->load($build['#cache']['keys'][2]);
+
+  // Add contexts.
+  $block_cache_context_values = $block_config->getThirdPartySetting('block_cache_add', 'cache_context', []);
+  foreach ($block_cache_context_values as $context) {
+    if (!empty($context['cache_context_id'])) {
+      $context_value = $context['cache_context_id'] . ':' . $context['cache_context_value'];
+      if (!in_array($context_value, $build['#cache']['contexts'])) {
+        $build['#cache']['contexts'][] = $context_value;
+      }
+    }
+  }
+
+  // Add tags.
+  $block_cache_tags_values = $block_config->getThirdPartySetting('block_cache_add', 'cache_tags', []);
+  foreach ($block_cache_tags_values as $tags) {
+    foreach (explode(',', $tags['cache_tags_value']) as $tag) {
+      $tag = trim($tag);
+      if (!empty($tag) && !in_array($tag, $build['#cache']['tags'])) {
+        $build['#cache']['tags'][] = $tag;
+      }
+    }
+  }
+
+  // Override 'max-age' header value.
+  $block_cache_max_age = $block_config->getThirdPartySetting('block_cache_add', 'cache_max_age', ['value' => $block_config->getCacheMaxAge()]);
+  $build['#cache']['max-age'] = (int) $block_cache_max_age['value'];
+}
