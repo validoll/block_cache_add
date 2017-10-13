@@ -6,7 +6,6 @@
  */
 
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Block\BlockPluginInterface;
 
 /**
  * Implements hook_form_FORM_ID_alter().
@@ -155,34 +154,11 @@ function block_cache_add_config_form_submit(array $form, FormStateInterface $for
 }
 
 /**
- * Implements hook_block_build_alter().
+ * Implements hook_entity_type_alter().
  */
-function block_cache_add_block_build_alter(array &$build, BlockPluginInterface $block) {
-  $block_config = \Drupal::entityTypeManager()->getStorage($build['#cache']['keys'][1])->load($build['#cache']['keys'][2]);
-
-  // Add contexts.
-  $block_cache_context_values = $block_config->getThirdPartySetting('block_cache_add', 'cache_context', []);
-  foreach ($block_cache_context_values as $context) {
-    if (!empty($context['cache_context_id'])) {
-      $context_value = $context['cache_context_id'] . ':' . $context['cache_context_value'];
-      if (!in_array($context_value, $build['#cache']['contexts'])) {
-        $build['#cache']['contexts'][] = $context_value;
-      }
-    }
+function block_cache_add_entity_type_alter(array &$entity_types) {
+  // Alter block config class.
+  if (isset($entity_types['block'])) {
+    $entity_types['block']->setClass('Drupal\block_cache_add\Entity\Block');
   }
-
-  // Add tags.
-  $block_cache_tags_values = $block_config->getThirdPartySetting('block_cache_add', 'cache_tags', []);
-  foreach ($block_cache_tags_values as $tags) {
-    foreach (explode(',', $tags['cache_tags_value']) as $tag) {
-      $tag = trim($tag);
-      if (!empty($tag) && !in_array($tag, $build['#cache']['tags'])) {
-        $build['#cache']['tags'][] = $tag;
-      }
-    }
-  }
-
-  // Override 'max-age' header value.
-  $block_cache_max_age = $block_config->getThirdPartySetting('block_cache_add', 'cache_max_age', ['value' => $block_config->getCacheMaxAge()]);
-  $build['#cache']['max-age'] = (int) $block_cache_max_age['value'];
 }
